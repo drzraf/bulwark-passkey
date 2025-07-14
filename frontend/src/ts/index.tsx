@@ -2,7 +2,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App, setAppRef } from "./app/App";
 import "./app/backend-interface";
-import { setupSupabase } from "./data/supabase";
 import "./core/debug";
 
 const root = ReactDOM.createRoot(
@@ -10,7 +9,6 @@ const root = ReactDOM.createRoot(
 );
 const appRef = React.createRef<App>();
 setAppRef(appRef);
-setupSupabase();
 root.render(
     <React.StrictMode>
         <App ref={appRef} />

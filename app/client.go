@@ -181,7 +181,6 @@ func (client *Client) save() {
 	}
 	saveVaultToFile(vaultFile)
 	updateFrontend()
-	storeRemoteVaultJSON(string(config), toTimestamp(client.lastUpdated))
 }
 
 // --------------------------

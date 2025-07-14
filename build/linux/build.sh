@@ -1,5 +1,7 @@
 #!/bin/bash
 
+[[ -n $DEBUG && $DEBUG != 0 ]] && DEBUG=-debug || DEBUG=
+
 set -e
 
 cd frontend
@@ -9,7 +11,7 @@ cd ..
 
 cp -r frontend/build app/frontend_dist
 cd app
-wails build -s -skipbindings -debug
+~/go/bin/wails build -s -skipbindings $DEBUG
 cd ..
-mkdir output
+mkdir -p output
 mv app/build/bin/bulwark_passkey output/

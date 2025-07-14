@@ -26,25 +26,15 @@ func logIn(vaultType string, vaultData string, email string) bool {
 	return response.(bool)
 }
 
-func createNewVault() (string, bool) {
+func createNewVault() (string) {
 	// 1st arg: vault type of new vault
-	// 2nd arg: if true, logged into remote vault instead of creating new one
 	response := callRPC(app.ctx, "createNewVault").([]interface{})
-	return response[0].(string), response[1].(bool)
+	return response[0].(string);
 }
 
 func getPassphrase() string {
 	response := callRPC(app.ctx, "getPassphrase")
 	return response.(string)
-}
-
-func fetchRemoteVaultJSON() (string, string) {
-	response := callRPC(app.ctx, "fetchRemoteVault").([]interface{})
-	return response[0].(string), response[1].(string)
-}
-
-func storeRemoteVaultJSON(vaultJSON string, lastUpdated string) {
-	callRPC(app.ctx, "storeRemoteVault", vaultJSON, lastUpdated)
 }
 
 func getUserEmail() string {
@@ -57,7 +47,6 @@ func loadFrontendHandlers() {
 	registerHandler(app.ctx, "deleteIdentity", handleDeleteIdentity)
 	registerHandler(app.ctx, "passphraseChanged", handlePassphraseChanged)
 	registerHandler(app.ctx, "tryPassphrase", handleTryPassphrase)
-	registerHandler(app.ctx, "remoteVaultUpdated", handleRemoteVaultUpdated)
 	registerHandler(app.ctx, "getFavicon", handleGetFavicon)
 	registerHandler(app.ctx, "setDebugLogs", handleSetDebugLogs)
 }
@@ -145,13 +134,6 @@ func handleTryPassphrase(args ...interface{}) interface{} {
 	data := args[1].(string)
 	_, err := identities.DecryptWithPassphrase(passphrase, []byte(data))
 	return err == nil
-}
-
-func handleRemoteVaultUpdated(args ...interface{}) interface{} {
-	vaultData := args[0].(string)
-	lastUpdated := args[1].(string)
-	app.client.updateData([]byte(vaultData), lastUpdated)
-	return nil
 }
 
 func handleGetFavicon(args ...interface{}) interface{} {

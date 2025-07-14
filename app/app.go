@@ -47,9 +47,6 @@ func (app *App) initializeData() {
 		if !eject {
 			// 1. Logged in locally or remotely
 			app.client.loadData(vaultFile.VaultType, vaultFile.Data, vaultFile.LastUpdated, vaultFile.Email)
-			if vaultFile.VaultType == accountVaultType {
-				go app.updateRemoteVault()
-			}
 		} else {
 			// 2. Eject and create new vault
 			deleteVaultFile()
@@ -60,25 +57,6 @@ func (app *App) initializeData() {
 }
 
 func (app *App) createNewVault() {
-	vaultType, loggedIn := createNewVault()
-	if loggedIn {
-		// Fetch remote vault
-		jsonData, lastUpdated := fetchRemoteVaultJSON()
-		if jsonData == "" {
-			// Fetch returned no vault on remote servers
-			app.client.configureNewDevice(accountVaultType)
-		} else {
-			app.client.loadData(accountVaultType, []byte(jsonData), lastUpdated, getUserEmail())
-		}
-	} else {
-		app.client.configureNewDevice(vaultType)
-	}
-}
-
-func (app *App) updateRemoteVault() {
-	jsonData, lastUpdated := fetchRemoteVaultJSON()
-	if jsonData != "" && lastUpdated != "" && jsonData != "Error" {
-		// TODO: Have better error interface for vault updates (error, network error, no data, vault data)
-		app.client.updateData([]byte(jsonData), lastUpdated)
-	}
+	vaultType := createNewVault()
+	app.client.configureNewDevice(vaultType)
 }
