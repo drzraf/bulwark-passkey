@@ -11,6 +11,8 @@ import { changePassphrase, getPassphrase } from "../data/passphrase";
 import { AboutModal } from "./modals/About";
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import { DeveloperModal } from "./modals/Developer";
+import { alertUser } from "./modals/Confirm";
+import * as identities from "../data/identities";
 
 export class Settings extends React.Component {
     render() {
@@ -36,6 +38,9 @@ export class Settings extends React.Component {
                 />
             );
         }
+        settings.push(
+            <SettingsItem text="Import Passkey" onClick={this.importPasskey_} />
+        );
         settings.push(
             <SettingsItem text="Developer" onClick={this.showDeveloper_} />
         );
@@ -64,6 +69,17 @@ export class Settings extends React.Component {
                     hideModal();
                 }}
             />
+        );
+    };
+
+    importPasskey_ = async () => {
+        const result = await identities.importIdentity();
+        if (result.canceled) {
+            return;
+        }
+        await alertUser(
+            result.message,
+            result.ok ? "Passkey Imported" : "Import Failed"
         );
     };
 

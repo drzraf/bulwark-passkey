@@ -119,6 +119,22 @@ export async function fetchRemoteVault(): Promise<[string, string]> {
     return [data[0].data, data[0].updated_at];
 }
 
+// Result of a key-level export/import. `canceled` means the user dismissed the
+// file dialog, in which case `message` is empty and nothing should be shown.
+export type ShareResult = {
+    ok: boolean;
+    canceled: boolean;
+    message: string;
+};
+
+export async function exportIdentity(id: Uint8Array): Promise<ShareResult> {
+    return (await callRPC("exportIdentity", bytesToBase64(id))) as ShareResult;
+}
+
+export async function importIdentity(): Promise<ShareResult> {
+    return (await callRPC("importIdentity")) as ShareResult;
+}
+
 export async function getFavicon(domain: string): Promise<string | null> {
     return await callRPC("getFavicon", domain);
 }
