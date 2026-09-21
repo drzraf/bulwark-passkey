@@ -9,7 +9,7 @@ else
 	ifeq ($(UNAME), Darwin)
 		OS_NAME = Darwin
 		OUTPUT_NAME = Bulwark\ Passkey.app
-		RUN_COMMAND = Bulwark\ Passkey.app/Contents/MacOS/Bulwark\ Passkey
+		RUN_COMMAND = Bulwark\ Passkey.app/Contents/MacOS/bulwark_passkey
 		RM = rm -r
 	else ifeq ($(UNAME), Linux)
 		OS_NAME = Linux

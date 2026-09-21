@@ -2,7 +2,7 @@
 <plist version="1.0"><dict>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleName</key><string>Bulwark Passkey</string>
-	<key>CFBundleExecutable</key><string>{{.Name}}</string>
+	<key>CFBundleExecutable</key><string>{{.OutputFilename}}</string>
 	<key>CFBundleIdentifier</key><string>id.bulwark.BulwarkPasskey.app</string>
 	<key>CFBundleVersion</key><string>{{.Info.ProductVersion}}</string>
 	<key>CFBundleGetInfoString</key><string>{{.Info.Comments}}</string>

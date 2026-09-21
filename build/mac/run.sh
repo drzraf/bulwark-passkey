@@ -2,4 +2,4 @@
 
 set -e
 
-./output/Bulwark\ Passkey.app/Contents/MacOS/Bulwark\ Passkey
+./output/Bulwark\ Passkey.app/Contents/MacOS/bulwark_passkey
