@@ -170,7 +170,9 @@ func (client *FIDOClient) ApproveAccountCreation(relyingParty string) bool {
 }
 
 func (client *FIDOClient) ApproveAccountLogin(credentialSource *identities.CredentialSource) bool {
-	return client.getApproval("fido_get_assertion", credentialSource.RelyingParty.Name, credentialSource.User.DisplayName)
+	relyingParty := firstNonEmpty(credentialSource.RelyingParty.Name, credentialSource.RelyingParty.Id)
+	userName := firstNonEmpty(credentialSource.User.DisplayName, credentialSource.User.Name)
+	return client.getApproval("fido_get_assertion", relyingParty, userName)
 }
 
 func (client *FIDOClient) ApproveU2FRegistration(keyHandle *webauthn.KeyHandle) bool {

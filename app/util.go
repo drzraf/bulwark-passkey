@@ -46,6 +46,18 @@ func now() time.Time {
 	return time.Now().UTC()
 }
 
+// firstNonEmpty returns the first non-empty string, or "" if there is none.
+// Relying parties are not required to send rp.name or user.displayName over
+// CTAP, so display code has to fall back to rp.id and user.name.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func containsArray[T comparable](arr []T, others [][]T) bool {
 	for _, otherArr := range others {
 		matches := true

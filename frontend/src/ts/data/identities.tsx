@@ -68,3 +68,16 @@ export async function importIdentity(): Promise<ShareResult> {
 export async function getFavicon(domain: string): Promise<string | null> {
     return await callRPC("getFavicon", domain);
 }
+
+// Relying parties are not required to send `rp.name` or `user.displayName` over
+// CTAP, and browsers routinely omit them (notably for non-discoverable
+// credentials) to avoid handing personal data to the authenticator. `rp.id` and
+// `user.name` are the fields that are reliably present, so fall back to them
+// instead of rendering a blank label.
+export function websiteLabel(identity: Identity): string {
+    return identity.website?.name || identity.website?.id || "Unknown website";
+}
+
+export function userLabel(identity: Identity): string {
+    return identity.user?.displayName || identity.user?.name || "Unknown user";
+}

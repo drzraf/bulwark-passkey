@@ -150,14 +150,8 @@ func sharedPasskeyFilters() []runtime.FileFilter {
 }
 
 func sharedPasskeyDescription(passkey *identities.SavedCredentialSource) string {
-	website := passkey.RelyingParty.Name
-	if website == "" {
-		website = passkey.RelyingParty.Id
-	}
-	user := passkey.User.DisplayName
-	if user == "" {
-		user = passkey.User.Name
-	}
+	website := firstNonEmpty(passkey.RelyingParty.Name, passkey.RelyingParty.Id)
+	user := firstNonEmpty(passkey.User.DisplayName, passkey.User.Name)
 	if website == "" && user == "" {
 		return "an unnamed account"
 	}
