@@ -45,6 +45,8 @@ func getUserEmail() string {
 func loadFrontendHandlers() {
 	registerHandler(app.ctx, "getIdentities", handleIdentities)
 	registerHandler(app.ctx, "deleteIdentity", handleDeleteIdentity)
+	registerHandler(app.ctx, "exportIdentity", handleExportIdentity)
+	registerHandler(app.ctx, "importIdentity", handleImportIdentity)
 	registerHandler(app.ctx, "passphraseChanged", handlePassphraseChanged)
 	registerHandler(app.ctx, "tryPassphrase", handleTryPassphrase)
 	registerHandler(app.ctx, "getFavicon", handleGetFavicon)
@@ -122,6 +124,24 @@ func handleDeleteIdentity(data ...interface{}) interface{} {
 	id, err := base64.StdEncoding.DecodeString(data[0].(string))
 	checkErr(err, "Could not decode identity ID to delete")
 	return app.client.deleteIdentity(id)
+}
+
+func handleExportIdentity(data ...interface{}) interface{} {
+	if app.client == nil {
+		return shareFailure("The vault is not unlocked yet.")
+	}
+	id, err := base64.StdEncoding.DecodeString(data[0].(string))
+	if err != nil {
+		return shareFailure("Could not decode the identity ID to export.")
+	}
+	return app.client.exportIdentity(id)
+}
+
+func handleImportIdentity(data ...interface{}) interface{} {
+	if app.client == nil {
+		return shareFailure("The vault is not unlocked yet.")
+	}
+	return app.client.importIdentity()
 }
 
 func handlePassphraseChanged(data ...interface{}) interface{} {

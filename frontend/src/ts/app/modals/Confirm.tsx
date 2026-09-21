@@ -24,9 +24,32 @@ export async function promptUser(
     });
 }
 
+// Shows a message with a single dismiss button.
+export async function alertUser(message: string, title?: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+        showPopup((hidePopup) => {
+            return (
+                <ConfirmModal
+                    title={title || "Bulwark Passkey"}
+                    prompt={message}
+                    yesText="OK"
+                    hideNo={true}
+                    onResponse={() => {
+                        hidePopup();
+                        resolve();
+                    }}
+                />
+            );
+        });
+    });
+}
+
 type ConfirmModalProps = {
     title: string;
     prompt: string;
+    yesText?: string;
+    noText?: string;
+    hideNo?: boolean;
     onResponse: (approved: boolean) => void;
 };
 
@@ -66,21 +89,32 @@ export class ConfirmModal extends React.Component<
                         </div>
                     </div>
                 </div>
-                <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+                <div
+                    className={
+                        this.props.hideNo
+                            ? "mt-5 sm:mt-6"
+                            : "mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3"
+                    }
+                >
                     <Button
                         className="w-full justify-center"
                         size={ButtonSize.LG}
-                        text="Yes"
+                        text={this.props.yesText || "Yes"}
                         onClick={this.onYes_}
+                        buttonRef={
+                            this.props.hideNo ? this.cancelButtonRef_ : undefined
+                        }
                     />
+                    {this.props.hideNo ? null : (
                     <Button
                         className="mt-3 w-full justify-center"
                         size={ButtonSize.LG}
                         color={ButtonColor.SECONDARY}
-                        text="No"
+                            text={this.props.noText || "No"}
                         onClick={this.onNo_}
                         buttonRef={this.cancelButtonRef_}
                     />
+                    )}
                 </div>
             </Dialog.Panel>
         );
@@ -91,6 +125,11 @@ export class ConfirmModal extends React.Component<
                     className="relative z-50"
                     initialFocus={this.cancelButtonRef_}
                     onClose={() => {
+                        if (this.props.hideNo) {
+                            // No cancel button, so dismissing is the only response
+                            this.onYes_();
+                            return;
+                        }
                         this.setState({ open: false });
                     }}
                 >

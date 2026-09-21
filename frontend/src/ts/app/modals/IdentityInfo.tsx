@@ -5,6 +5,7 @@ import { hideModal } from "../ModalStack";
 import * as identities from "../../data/identities";
 import { CardModal, CardModalTitle } from "../../components/Modal";
 import { Button, ButtonColor, ButtonSize } from "../../components/Buttons";
+import { alertUser, promptUser } from "./Confirm";
 
 type IdentityInfoModalProps = {
     identity: Identity;
@@ -51,7 +52,12 @@ export class IdentityInfoModal extends React.Component<IdentityInfoModalProps> {
             />
         );
         let buttons = (
-            <div className="flex w-full justify-end px-4 py-4 sm:px-6">
+            <div className="flex w-full justify-end gap-3 px-4 py-4 sm:px-6">
+                <Button
+                    text="Export"
+                    onClick={this.export_}
+                    color={ButtonColor.SECONDARY}
+                />
                 <Button
                     text="Delete"
                     onClick={this.delete_}
@@ -67,6 +73,31 @@ export class IdentityInfoModal extends React.Component<IdentityInfoModalProps> {
             </CardModal>
         );
     }
+
+    export_ = async () => {
+        const id = this.props.identity.id;
+        if (!id) {
+            return;
+        }
+        const confirmed = await promptUser(
+            "Warning: the exported file contains the unencrypted private key for " +
+                "this passkey. Anyone who has the file can log in as this user. Only " +
+                "share it with teammates over a trusted channel, and delete the file " +
+                "once they have imported it. Do you want to export this passkey?",
+            "Export Passkey"
+        );
+        if (!confirmed) {
+            return;
+        }
+        const result = await identities.exportIdentity(id);
+        if (result.canceled) {
+            return;
+        }
+        await alertUser(
+            result.message,
+            result.ok ? "Passkey Exported" : "Export Failed"
+        );
+    };
 
     delete_ = async () => {
         const id = this.props.identity.id;
