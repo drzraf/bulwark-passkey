@@ -2,7 +2,6 @@ import { callRPC } from "../core/rpc";
 import { base64ToBytes, bytesToBase64, setImmediate } from "../core/util";
 import { Identity } from "../../proto/data";
 import { LogDebug } from "../wailsjs/runtime/runtime";
-import { LogError } from "../wailsjs/runtime/runtime";
 
 let identities: Identity[] = [];
 

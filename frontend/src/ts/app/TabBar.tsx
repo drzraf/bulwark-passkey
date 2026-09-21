@@ -57,8 +57,9 @@ export class NewTabBar extends React.Component<TabBarProps> {
         for (const tab of this.props.tabs) {
             const current = tab.id === this.props.activeTab;
             tabs.push(
-                <a
+                <button
                     key={tab.name}
+                    type="button"
                     className={classNames(
                         current
                             ? "border-indigo-500 text-indigo-600"
@@ -78,7 +79,7 @@ export class NewTabBar extends React.Component<TabBarProps> {
                         aria-hidden="true"
                     />
                     <span>{tab.name}</span>
-                </a>
+                </button>
             );
         }
         return (

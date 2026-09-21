@@ -25,7 +25,7 @@ export class AboutModal extends React.Component<AboutModalProps> {
         );
         const content = (
             <div className="grow flex flex-col items-center justify-center p-4">
-                <img src="/img/logo.png" width={100} />
+                <img src="/img/logo.png" width={100} alt="Bulwark Passkey" />
                 <p className="font-bold text-2xl">Bulwark Passkey</p>
                 <p className="text-sm">Version {VERSION}</p>
                 <p className="text-sm">

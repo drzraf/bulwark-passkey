@@ -21,13 +21,16 @@ class ListItem extends React.Component<ListItemProps, ListItemState> {
         this.loadFavicon(props);
     }
     componentDidUpdate(prevProps: ListItemProps) {
-        if (this.props.identity.website?.id != prevProps.identity.website?.id) {
+        if (
+            this.props.identity.website?.id !== prevProps.identity.website?.id
+        ) {
             this.loadFavicon(this.props);
         }
     }
     render() {
         let icon = this.state.icon ? (
-            <img className="h-5 w-5" src={this.state.icon} />
+            // Decorative: the website name is spelled out next to the icon.
+            <img className="h-5 w-5" src={this.state.icon} alt="" />
         ) : undefined;
         return (
             <li className="overflow-hidden rounded-md bg-white px-4 py-2 shadow">

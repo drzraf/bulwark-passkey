@@ -1,5 +1,4 @@
 import React from "react";
-import { classNames } from "../core/util";
 
 type ModalProps = {
     title: React.ReactElement;

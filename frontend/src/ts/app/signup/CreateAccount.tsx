@@ -23,24 +23,8 @@ type CreateAccountProps = {
     onCreated: (type: string) => void;
 };
 
-type CreateAccountState = {
-    errorMessage?: string;
-};
-
-export class CreateAccount extends React.Component<
-    CreateAccountProps,
-    CreateAccountState
-> {
-    state: CreateAccountState = {};
+export class CreateAccount extends React.Component<CreateAccountProps> {
     render() {
-        let errorMessage;
-        if (this.state.errorMessage) {
-            errorMessage = (
-                <div className="text-red-500 font-bold text-center mb-4">
-                    {this.state.errorMessage}
-                </div>
-            );
-        }
         const bottomButtons = (
             <div className="flex flex-col items-center mb-4 space-y-1">
                 <Button

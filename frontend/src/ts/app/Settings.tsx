@@ -96,9 +96,10 @@ class SettingsItem extends React.Component<SettingsItemProps> {
     render() {
         return (
             <li>
-                <a
+                <button
+                    type="button"
                     onClick={this.props.onClick}
-                    className="block hover:bg-gray-50"
+                    className="block w-full text-left hover:bg-gray-50"
                 >
                     <div className="flex items-center px-4 py-4">
                         <div className="min-w-0 flex-1">
@@ -115,7 +116,7 @@ class SettingsItem extends React.Component<SettingsItemProps> {
                             />
                         </div>
                     </div>
-                </a>
+                </button>
             </li>
         );
     }
