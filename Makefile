@@ -57,8 +57,11 @@ clean-Windows:
 clean-Linux:
 	bash -x ./build/linux/clean.sh
 
-dpkg: build
-	mkdir -p ./linux_pkg/bulwark-passkey/usr/bin/
-	cp ./output/bulwark_passkey ./linux_pkg/bulwark-passkey/usr/bin/
-	dpkg-deb --build ./linux_pkg/bulwark-passkey
-	mv ./linux_pkg/bulwark-passkey.deb ./output/
+# Packaging targets expect a previous `make build` (they package ./output).
+dpkg:
+	bash -x ./build/linux/dpkg.sh
+
+dmg:
+	bash -x ./build/mac/dmg.sh
+
+.PHONY: run nsis build output clean dpkg dmg

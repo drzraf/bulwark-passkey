@@ -1,8 +1,16 @@
-Package: bulwark-passkey 
-Version: 1.0 
-Section: base 
-Priority: optional 
-Architecture: all 
-Maintainer: hello@bulwark.id
-Description: Run Bulwark Passkey
-Depends: linux-tools-generic
+Package: bulwark-passkey
+Version: 0.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: BulwarkID <hello@bulwark.id>
+Homepage: https://bulwark.id
+Depends: libc6, libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.1-0t64
+Recommends: usbip | linux-tools-generic, polkitd | policykit-1
+Description: Manage and sync passkeys across your devices
+ Bulwark Passkey is a virtual FIDO2 authenticator. It exposes a virtual USB
+ security key to the system so that websites can register and use passkeys
+ that are stored and managed locally by this application.
+ .
+ Attaching the virtual device needs the usbip userspace tool, the vhci-hcd
+ kernel module and pkexec, which are pulled in by the recommended packages.

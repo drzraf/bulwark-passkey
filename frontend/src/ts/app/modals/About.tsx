@@ -6,6 +6,8 @@ type AboutModalProps = {
     onCancel: () => void;
 };
 
+const VERSION = process.env.REACT_APP_VERSION || "0.0.1";
+
 export class AboutModal extends React.Component<AboutModalProps> {
     render() {
         const title = (
@@ -25,7 +27,7 @@ export class AboutModal extends React.Component<AboutModalProps> {
             <div className="grow flex flex-col items-center justify-center p-4">
                 <img src="/img/logo.png" width={100} />
                 <p className="font-bold text-2xl">Bulwark Passkey</p>
-                <p className="text-sm">Version 0.0.1</p>
+                <p className="text-sm">Version {VERSION}</p>
                 <p className="text-sm">
                     Made by BulwarkID, Inc. in Oakland, CA
                 </p>

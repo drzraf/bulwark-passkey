@@ -8,6 +8,7 @@
     "info": {
         "companyName": "BulwarkID",
         "productName": "Bulwark Passkey",
+        "productVersion": "0.0.1",
         "comments": "Manage and Sync Passkeys Across your Devices"
     }
 }

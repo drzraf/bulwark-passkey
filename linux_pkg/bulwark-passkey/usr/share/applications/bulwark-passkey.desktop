@@ -2,6 +2,9 @@
 Name=Bulwark Passkey
 Comment=Virtual FIDO Device
 Exec=bulwark_passkey
+Icon=bulwark-passkey
 Terminal=false
 X-MultipleArgs=false
 Type=Application
+Categories=Utility;Security;
+Keywords=passkey;fido;webauthn;2fa;

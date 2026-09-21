@@ -1,0 +1,394 @@
+name: Release
+
+# Runs only for new commits on master (rolling nightly) and for v* tags
+# (regular releases). Path filters are applied inside the `meta` job instead of
+# here, because path filters are unreliable for tag pushes.
+on:
+    push:
+        branches:
+            - master
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            publish:
+                description: "Publish the artifacts as a nightly release"
+                type: boolean
+                default: true
+
+permissions:
+    contents: read
+
+concurrency:
+    # Supersede an in-flight nightly when master moves on, never cancel a tag build.
+    group: release-${{ github.ref }}
+    cancel-in-progress: ${{ github.ref == 'refs/heads/master' }}
+
+env:
+    # Keep the Wails CLI in sync with the wails version in app/go.mod
+    WAILS_VERSION: v2.16.0
+    PROTOC_GEN_GO_VERSION: v1.36.6
+    NODE_VERSION: "18"
+
+jobs:
+    meta:
+        name: Compute version
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.meta.outputs.version }}
+            product_version: ${{ steps.meta.outputs.product_version }}
+            deb_version: ${{ steps.meta.outputs.deb_version }}
+            channel: ${{ steps.meta.outputs.channel }}
+            tag: ${{ steps.meta.outputs.tag }}
+            publish: ${{ steps.meta.outputs.publish }}
+            build: ${{ steps.meta.outputs.build }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Compute version and channel
+              id: meta
+              env:
+                  DISPATCH_PUBLISH: ${{ github.event.inputs.publish }}
+                  BEFORE_SHA: ${{ github.event.before }}
+              run: |
+                  set -euo pipefail
+                  build=true
+                  if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+                      version="${GITHUB_REF_NAME#v}"
+                      product_version="$version"
+                      deb_version="$version"
+                      channel=release
+                      tag="$GITHUB_REF_NAME"
+                      publish=true
+                  else
+                      date="$(date -u +%Y%m%d)"
+                      short="$(git rev-parse --short=8 HEAD)"
+                      version="nightly-${date}-${short}"
+                      product_version="0.0.0-nightly.${date}"
+                      # `~` sorts before any release version for apt
+                      deb_version="0.0.0~nightly${date}.${short}"
+                      channel=nightly
+                      tag=nightly
+                      case "$GITHUB_EVENT_NAME" in
+                          push) publish=true ;;
+                          workflow_dispatch) publish="${DISPATCH_PUBLISH:-false}" ;;
+                          *) publish=false ;;
+                      esac
+                  fi
+
+                  # Nothing to release when a push only touched the website or docs.
+                  if [[ "$GITHUB_EVENT_NAME" == push && "$channel" == nightly ]]; then
+                      changed=""
+                      if [[ -n "${BEFORE_SHA:-}" && ! "$BEFORE_SHA" =~ ^0+$ ]] \
+                          && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+                          changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+                      fi
+                      if [[ -n "$changed" ]] \
+                          && ! grep -qvE '^(marketing-next/|[^/]*\.md$|\.github/workflows/deploy-marketing\.yml$)' <<<"$changed"; then
+                          echo "Push only touched the website or documentation, nothing to build."
+                          build=false
+                          publish=false
+                      fi
+                  fi
+
+                  {
+                      echo "version=$version"
+                      echo "product_version=$product_version"
+                      echo "deb_version=$deb_version"
+                      echo "channel=$channel"
+                      echo "tag=$tag"
+                      echo "publish=$publish"
+                      echo "build=$build"
+                  } | tee -a "$GITHUB_OUTPUT"
+
+    linux:
+        name: Linux (deb)
+        needs: meta
+        if: needs.meta.outputs.build == 'true'
+        # Built against webkit2gtk-4.1, so the package installs on any
+        # distribution shipping that API (Debian 12+, Ubuntu 22.04+). The glibc
+        # of the runner image is the effective floor for the binary itself.
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install build dependencies
+              run: |
+                  set -eux
+                  export DEBIAN_FRONTEND=noninteractive
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                      desktop-file-utils \
+                      dpkg-dev \
+                      libgtk-3-dev \
+                      libwebkit2gtk-4.1-dev \
+                      lintian \
+                      pkg-config \
+                      protobuf-compiler
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: app/go.mod
+                  cache-dependency-path: app/go.sum
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install Go tooling
+              run: |
+                  set -eux
+                  go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
+                  go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
+                  echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
+
+            - name: Install frontend dependencies
+              working-directory: frontend
+              run: npm ci
+
+            - name: Stamp version
+              run: |
+                  set -eux
+                  jq --arg v "${{ needs.meta.outputs.product_version }}" \
+                      '.info.productVersion = $v' app/wails.json >app/wails.json.tmp
+                  mv app/wails.json.tmp app/wails.json
+
+            - name: Build
+              env:
+                  VERSION: ${{ needs.meta.outputs.version }}
+              run: make build
+
+            - name: Package .deb
+              env:
+                  VERSION: ${{ needs.meta.outputs.deb_version }}
+                  ARCH: amd64
+                  DEB_NAME: bulwark-passkey_${{ needs.meta.outputs.deb_version }}_amd64.deb
+              run: make dpkg
+
+            - name: Package portable tarball
+              env:
+                  VERSION: ${{ needs.meta.outputs.version }}
+              run: |
+                  set -eux
+                  tar -czf "output/bulwark-passkey-${VERSION}-linux-amd64.tar.gz" \
+                      -C output bulwark_passkey
+
+            - name: Inspect package
+              run: |
+                  set -eux
+                  dpkg-deb -I output/*.deb
+                  dpkg-deb -c output/*.deb
+                  # Report the glibc/libstdc++ floor of the shipped binary
+                  objdump -T output/bulwark_passkey \
+                      | awk '/GLIBC_/ {print $5}' | sort -uV | tail -3
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: linux-amd64
+                  if-no-files-found: error
+                  path: |
+                      output/*.deb
+                      output/*.tar.gz
+
+    macos:
+        name: macOS (dmg)
+        needs: meta
+        if: needs.meta.outputs.build == 'true'
+        runs-on: macos-14
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: app/go.mod
+                  cache-dependency-path: app/go.sum
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install protoc
+              run: brew install protobuf
+
+            - name: Install Go tooling
+              run: |
+                  set -eux
+                  go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
+                  go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
+                  echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
+
+            - name: Install frontend dependencies
+              working-directory: frontend
+              run: npm ci
+
+            - name: Stamp version
+              run: |
+                  set -eux
+                  jq --arg v "${{ needs.meta.outputs.product_version }}" \
+                      '.info.productVersion = $v' app/wails.json >app/wails.json.tmp
+                  mv app/wails.json.tmp app/wails.json
+
+            - name: Import signing certificate
+              id: signing
+              shell: bash
+              env:
+                  MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+                  MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+                  MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+              run: |
+                  set -eu
+                  if [[ -z "${MACOS_CERTIFICATE:-}" || -z "${MACOS_SIGNING_IDENTITY:-}" ]]; then
+                      echo "No signing certificate configured, the app will be ad-hoc signed."
+                      echo "identity=" >>"$GITHUB_OUTPUT"
+                      echo "notarize=false" >>"$GITHUB_OUTPUT"
+                      exit 0
+                  fi
+                  keychain="$RUNNER_TEMP/build.keychain-db"
+                  keychain_password="$(openssl rand -base64 24)"
+                  certificate="$RUNNER_TEMP/certificate.p12"
+                  echo "$MACOS_CERTIFICATE" | base64 --decode >"$certificate"
+                  security create-keychain -p "$keychain_password" "$keychain"
+                  security set-keychain-settings -lut 21600 "$keychain"
+                  security unlock-keychain -p "$keychain_password" "$keychain"
+                  security import "$certificate" -k "$keychain" \
+                      -P "$MACOS_CERTIFICATE_PASSWORD" \
+                      -T /usr/bin/codesign -T /usr/bin/security
+                  security set-key-partition-list -S apple-tool:,apple:,codesign: \
+                      -s -k "$keychain_password" "$keychain" >/dev/null
+                  security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+                  security default-keychain -s "$keychain"
+                  rm -f "$certificate"
+                  echo "identity=$MACOS_SIGNING_IDENTITY" >>"$GITHUB_OUTPUT"
+                  if [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_PASSWORD:-}" ]]; then
+                      echo "notarize=true" >>"$GITHUB_OUTPUT"
+                  else
+                      echo "No notarization credentials configured, skipping notarization."
+                      echo "notarize=false" >>"$GITHUB_OUTPUT"
+                  fi
+
+            - name: Build
+              env:
+                  VERSION: ${{ needs.meta.outputs.version }}
+                  MACOS_SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
+              run: make build
+
+            - name: Notarize app bundle
+              if: steps.signing.outputs.notarize == 'true'
+              env:
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+              run: |
+                  set -eu
+                  ditto -c -k --keepParent "output/Bulwark Passkey.app" "$RUNNER_TEMP/app.zip"
+                  xcrun notarytool submit "$RUNNER_TEMP/app.zip" \
+                      --apple-id "$APPLE_ID" \
+                      --team-id "$APPLE_TEAM_ID" \
+                      --password "$APPLE_APP_PASSWORD" \
+                      --wait
+                  xcrun stapler staple "output/Bulwark Passkey.app"
+
+            - name: Package .dmg
+              env:
+                  VERSION: ${{ needs.meta.outputs.version }}
+                  DMG_NAME: bulwark-passkey-${{ needs.meta.outputs.version }}-macos-universal.dmg
+                  MACOS_SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
+              run: make dmg
+
+            - name: Notarize disk image
+              if: steps.signing.outputs.notarize == 'true'
+              env:
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+                  DMG_NAME: bulwark-passkey-${{ needs.meta.outputs.version }}-macos-universal.dmg
+              run: |
+                  set -eu
+                  xcrun notarytool submit "output/$DMG_NAME" \
+                      --apple-id "$APPLE_ID" \
+                      --team-id "$APPLE_TEAM_ID" \
+                      --password "$APPLE_APP_PASSWORD" \
+                      --wait
+                  xcrun stapler staple "output/$DMG_NAME"
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: macos-universal
+                  if-no-files-found: error
+                  path: output/*.dmg
+
+    release:
+        name: Publish ${{ needs.meta.outputs.channel }} release
+        needs: [meta, linux, macos]
+        if: needs.meta.outputs.publish == 'true'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+
+            - name: Collect artifacts
+              run: |
+                  set -eux
+                  mkdir -p dist
+                  find artifacts -type f -exec mv -t dist {} +
+                  cd dist
+                  sha256sum * >SHA256SUMS
+                  ls -l
+
+            - name: Publish nightly release
+              if: needs.meta.outputs.channel == 'nightly'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  VERSION: ${{ needs.meta.outputs.version }}
+              run: |
+                  set -eu
+                  cat >notes.md <<EOF
+                  Automated nightly build of \`$GITHUB_SHA\` ($VERSION).
+
+                  These builds are untested and may break your passkey store.
+
+                  - \`*.deb\`: Debian/Ubuntu package (amd64), built on Debian bookworm.
+                  - \`*.tar.gz\`: portable Linux binary (amd64).
+                  - \`*.dmg\`: universal macOS disk image. Unless signing secrets are
+                    configured it is only ad-hoc signed, so Gatekeeper needs an explicit
+                    override and the virtual USB system extension will not install.
+                  EOF
+                  # Move the rolling `nightly` tag to the commit being built.
+                  gh release delete nightly --yes --cleanup-tag || true
+                  gh release create nightly \
+                      --target "$GITHUB_SHA" \
+                      --title "Nightly build $VERSION" \
+                      --prerelease \
+                      --notes-file notes.md \
+                      dist/*
+
+            - name: Publish tagged release
+              if: needs.meta.outputs.channel == 'release'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ needs.meta.outputs.tag }}
+                  VERSION: ${{ needs.meta.outputs.version }}
+              run: |
+                  set -eu
+                  if gh release view "$TAG" >/dev/null 2>&1; then
+                      gh release upload "$TAG" dist/* --clobber
+                  else
+                      gh release create "$TAG" \
+                          --title "Bulwark Passkey $VERSION" \
+                          --generate-notes \
+                          dist/*
+                  fi
