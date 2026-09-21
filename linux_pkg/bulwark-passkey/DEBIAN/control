@@ -5,4 +5,4 @@ Priority: optional
 Architecture: all 
 Maintainer: hello@bulwark.id
 Description: Run Bulwark Passkey
-Depends: usbip
+Depends: linux-tools-generic
