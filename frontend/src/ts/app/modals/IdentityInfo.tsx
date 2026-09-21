@@ -15,25 +15,37 @@ export class IdentityInfoModal extends React.Component<IdentityInfoModalProps> {
         const id = this.props.identity;
         const publicKey = id.publicKey ? bytesToBase64(id.publicKey) : "";
         const hash = id.id ? bytesToBase64(id.id) : "";
+        const website = identities.websiteLabel(id);
+        const user = identities.userLabel(id);
+        // The domain and the raw username are only worth their own row when the
+        // relying party gave a different display name for them.
+        const rows: { label: string; value?: string }[] = [
+            { label: "ID", value: hash },
+            { label: "Website", value: website },
+        ];
+        if (id.website?.id && id.website.id !== website) {
+            rows.push({ label: "Domain", value: id.website.id });
+        }
+        rows.push({ label: "User Name", value: user });
+        if (id.user?.name && id.user.name !== user) {
+            rows.push({ label: "Username", value: id.user.name });
+        }
+        rows.push({ label: "Public Key", value: publicKey });
+        rows.push({
+            label: "Signature Counter",
+            value: id.signatureCounter?.toString(),
+        });
         let content = (
             <div className="flex flex-col w-full justify-center items-center">
                 <dl className="w-full">
-                    <DescriptionListItem label="ID" value={hash} dark={true} />
-                    <DescriptionListItem
-                        label="Website"
-                        value={id.website?.name}
-                    />
-                    <DescriptionListItem
-                        label="User Name"
-                        value={id.user?.displayName}
-                        dark={true}
-                    />
-                    <DescriptionListItem label="Public Key" value={publicKey} />
-                    <DescriptionListItem
-                        label="Signature Counter"
-                        value={id.signatureCounter?.toString()}
-                        dark={true}
-                    />
+                    {rows.map((row, index) => (
+                        <DescriptionListItem
+                            key={row.label}
+                            label={row.label}
+                            value={row.value}
+                            dark={index % 2 === 0}
+                        />
+                    ))}
                 </dl>
             </div>
         );

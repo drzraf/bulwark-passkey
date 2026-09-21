@@ -36,10 +36,10 @@ class ListItem extends React.Component<ListItemProps, ListItemState> {
                         {icon}
                         <div className="flex flex-col items-start pl-4">
                             <div className="text-md">
-                                {this.props.identity.website?.name}
+                                {identities.websiteLabel(this.props.identity)}
                             </div>
                             <div className="text-sm text-gray-500">
-                                {this.props.identity.user?.displayName}
+                                {identities.userLabel(this.props.identity)}
                             </div>
                         </div>
                     </div>
