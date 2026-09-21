@@ -75,8 +75,8 @@ keychain to get a properly signed build.
 
 ## Releases
 
-`.github/workflows/release.yml` builds Linux (`.deb` + portable tarball) and
-macOS (universal `.dmg`) artifacts. It only runs when there is something to
+`.github/workflows/release.yml` builds Linux (`.deb` + portable zipped binary)
+and macOS (universal `.dmg`) artifacts. It only runs when there is something to
 release:
 
 * a new commit on `master` refreshes the rolling `nightly` pre-release; pushes
@@ -86,12 +86,26 @@ release:
 * `workflow_dispatch` rebuilds on demand, with an input to choose whether the
   result is published.
 
-Linux artifacts are built on the current `ubuntu-latest` image against
+To skip a run, put `[skip ci]` in the commit message (`[ci skip]`, `[no ci]`,
+`[skip actions]` and `[actions skip]` work too). GitHub applies this to `push`
+and `pull_request` events, so it covers both `master` commits and `v*` tags, but
+a `workflow_dispatch` run cannot be skipped this way.
+
+Each asset is uploaded with `archive: false`, so the workflow artifacts are the
+real files rather than one zip containing several of them. The portable binary
+is zipped rather than `tar.gz`'d: a single file does not need tar, and a zip
+still records the executable bit that a bare `.gz` would drop.
+
+Linux artifacts are built on a pinned `ubuntu-24.04` image against
 `webkit2gtk-4.1`, and the package depends on the runtime libraries through
 alternatives (`libgtk-3-0t64 | libgtk-3-0`, ...) so it installs on both the
 pre- and post-`t64` distributions. `usbip` and `polkit` are `Recommends`, which
 apt installs by default while keeping the package installable where those
-package names differ.
+package names differ. The runner image sets the glibc floor, currently 2.39, so
+the binaries do not run on older distributions such as Debian 12; build locally
+for those. Both Linux artifacts are dynamically linked against GTK 3 and
+WebKitGTK, which cannot be statically linked because WebKit2 runs its web,
+network and GPU work in separate helper executables.
 
 macOS signing and notarization are optional and driven by repository secrets;
 when they are missing, the disk image is still produced with an ad-hoc signature:

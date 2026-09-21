@@ -3,6 +3,11 @@ name: Release
 # Runs only for new commits on master (rolling nightly) and for v* tags
 # (regular releases). Path filters are applied inside the `meta` job instead of
 # here, because path filters are unreliable for tag pushes.
+#
+# To skip a run entirely, put `[skip ci]` (or `[ci skip]`, `[no ci]`,
+# `[skip actions]`, `[actions skip]`) anywhere in the commit message. GitHub
+# honours that for `push` and `pull_request` events, so it works for both master
+# commits and `v*` tags, but not for `workflow_dispatch`.
 on:
     push:
         branches:
@@ -28,12 +33,13 @@ env:
     # Keep the Wails CLI in sync with the wails version in app/go.mod
     WAILS_VERSION: v2.16.0
     PROTOC_GEN_GO_VERSION: v1.36.6
-    NODE_VERSION: "18"
+    # Node 18 went end-of-life in April 2025; 22 is the current LTS.
+    NODE_VERSION: "22"
 
 jobs:
     meta:
         name: Compute version
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         outputs:
             version: ${{ steps.meta.outputs.version }}
             product_version: ${{ steps.meta.outputs.product_version }}
@@ -43,7 +49,7 @@ jobs:
             publish: ${{ steps.meta.outputs.publish }}
             build: ${{ steps.meta.outputs.build }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
@@ -107,12 +113,15 @@ jobs:
         name: Linux (deb)
         needs: meta
         if: needs.meta.outputs.build == 'true'
-        # Built against webkit2gtk-4.1, so the package installs on any
-        # distribution shipping that API (Debian 12+, Ubuntu 22.04+). The glibc
-        # of the runner image is the effective floor for the binary itself.
-        runs-on: ubuntu-latest
+        # Built against webkit2gtk-4.1, so the package needs a distribution
+        # shipping that API. The real constraint is stricter than the library
+        # API though: the runner image's glibc is the floor for the binary, so
+        # this pin decides which distributions the .deb runs on (24.04 => glibc
+        # 2.39, which rules out Debian 12 and Ubuntu 22.04). Pinned rather than
+        # `ubuntu-latest` so that floor only moves deliberately.
+        runs-on: ubuntu-24.04
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install build dependencies
               run: |
@@ -126,14 +135,16 @@ jobs:
                       libwebkit2gtk-4.1-dev \
                       lintian \
                       pkg-config \
-                      protobuf-compiler
+                      protobuf-compiler \
+                      unzip \
+                      zip
 
-            - uses: actions/setup-go@v5
+            - uses: actions/setup-go@v7
               with:
                   go-version-file: app/go.mod
                   cache-dependency-path: app/go.sum
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: ${{ env.NODE_VERSION }}
                   cache: npm
@@ -169,13 +180,17 @@ jobs:
                   DEB_NAME: bulwark-passkey_${{ needs.meta.outputs.deb_version }}_amd64.deb
               run: make dpkg
 
-            - name: Package portable tarball
+            - name: Package portable binary
               env:
                   VERSION: ${{ needs.meta.outputs.version }}
               run: |
                   set -eux
-                  tar -czf "output/bulwark-passkey-${VERSION}-linux-amd64.tar.gz" \
-                      -C output bulwark_passkey
+                  # A single file does not need tar, and unlike a bare .gz a zip
+                  # keeps the executable bit, so the binary stays runnable after
+                  # extraction without a chmod.
+                  cd output
+                  zip -9 "bulwark-passkey-${VERSION}-linux-amd64.zip" bulwark_passkey
+                  unzip -l "bulwark-passkey-${VERSION}-linux-amd64.zip"
 
             - name: Inspect package
               run: |
@@ -186,13 +201,22 @@ jobs:
                   objdump -T output/bulwark_passkey \
                       | awk '/GLIBC_/ {print $5}' | sort -uV | tail -3
 
-            - uses: actions/upload-artifact@v4
+            # `archive: false` uploads the file as-is instead of wrapping it in
+            # the zip that the artifacts API produces by default, so each asset
+            # is downloadable on its own. It accepts exactly one file per step,
+            # hence one step per asset. `name` is ignored in this mode: the
+            # artifact is named after the uploaded file.
+            - uses: actions/upload-artifact@v7
               with:
-                  name: linux-amd64
+                  archive: false
                   if-no-files-found: error
-                  path: |
-                      output/*.deb
-                      output/*.tar.gz
+                  path: output/*.deb
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  archive: false
+                  if-no-files-found: error
+                  path: output/bulwark-passkey-${{ needs.meta.outputs.version }}-linux-amd64.zip
 
     macos:
         name: macOS (dmg)
@@ -200,14 +224,14 @@ jobs:
         if: needs.meta.outputs.build == 'true'
         runs-on: macos-14
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-go@v5
+            - uses: actions/setup-go@v7
               with:
                   go-version-file: app/go.mod
                   cache-dependency-path: app/go.sum
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: ${{ env.NODE_VERSION }}
                   cache: npm
@@ -320,9 +344,9 @@ jobs:
                       --wait
                   xcrun stapler staple "output/$DMG_NAME"
 
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@v7
               with:
-                  name: macos-universal
+                  archive: false
                   if-no-files-found: error
                   path: output/*.dmg
 
@@ -330,15 +354,19 @@ jobs:
         name: Publish ${{ needs.meta.outputs.channel }} release
         needs: [meta, linux, macos]
         if: needs.meta.outputs.publish == 'true'
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         permissions:
             contents: write
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/download-artifact@v4
+            # The assets are uploaded unarchived, so they must come back down
+            # untouched: without skip-decompress the `.zip` would be extracted
+            # here and the release would carry the bare binary instead.
+            - uses: actions/download-artifact@v8
               with:
                   path: artifacts
+                  skip-decompress: true
 
             - name: Collect artifacts
               run: |
@@ -346,7 +374,18 @@ jobs:
                   mkdir -p dist
                   find artifacts -type f -exec mv -t dist {} +
                   cd dist
-                  sha256sum * >SHA256SUMS
+                  # Guard against a silently empty or partial release.
+                  for pattern in "*.deb" "*-linux-amd64.zip" "*.dmg"; do
+                      if [[ $(find . -maxdepth 1 -name "$pattern" | wc -l) -ne 1 ]]; then
+                          echo "expected exactly one $pattern in dist/" >&2
+                          ls -l >&2
+                          exit 1
+                      fi
+                  done
+                  # Listing `*` would include SHA256SUMS itself, recording the
+                  # hash of the empty file it was just truncated to.
+                  sha256sum -- *.deb *.zip *.dmg >SHA256SUMS
+                  cat SHA256SUMS
                   ls -l
 
             - name: Publish nightly release
@@ -361,8 +400,11 @@ jobs:
 
                   These builds are untested and may break your passkey store.
 
-                  - \`*.deb\`: Debian/Ubuntu package (amd64), built on Debian bookworm.
-                  - \`*.tar.gz\`: portable Linux binary (amd64).
+                  - \`*.deb\`: Debian/Ubuntu package (amd64), built on Ubuntu 24.04
+                    against webkit2gtk-4.1, so it needs glibc 2.39 or newer.
+                  - \`*.zip\`: the same portable Linux binary (amd64). It is
+                    dynamically linked, so GTK 3 and webkit2gtk-4.1 must already
+                    be installed.
                   - \`*.dmg\`: universal macOS disk image. Unless signing secrets are
                     configured it is only ad-hoc signed, so Gatekeeper needs an explicit
                     override and the virtual USB system extension will not install.
