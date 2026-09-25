@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"math/big"
 
+	"github.com/bulwarkid/virtual-fido/cose"
 	vfido_crypto "github.com/bulwarkid/virtual-fido/crypto"
 	"github.com/bulwarkid/virtual-fido/identities"
 	"github.com/bulwarkid/virtual-fido/webauthn"
@@ -94,13 +96,36 @@ func (client *FIDOClient) exportConfig() *identities.FIDODeviceConfig {
 		AttestationCertificate: client.certificateAuthority.Raw,
 		AttestationPrivateKey:  privateKey,
 		EncryptionKey:          client.encryptionKey,
+		PINEnabled:             client.SupportsPIN(),
 		PINHash:                client.pinHash,
 		Sources:                client.vault.Export(),
 	}
 	return &config
 }
 
-func (client *FIDOClient) NewCredentialSource(relyingParty webauthn.PublicKeyCredentialRpEntity, user webauthn.PublicKeyCrendentialUserEntity) *identities.CredentialSource {
+// SupportsResidentKey reports discoverable credential support; every passkey in
+// the vault is stored on the device, so resident keys are always available.
+func (client *FIDOClient) SupportsResidentKey() bool {
+	return true
+}
+
+func (client *FIDOClient) NewCredentialSource(
+	pubKeyCredParams []webauthn.PublicKeyCredentialParams,
+	excludeList []webauthn.PublicKeyCredentialDescriptor,
+	relyingParty *webauthn.PublicKeyCredentialRPEntity,
+	user *webauthn.PublicKeyCrendentialUserEntity) *identities.CredentialSource {
+	// The vault only creates ES256 credentials, so refuse relying parties that
+	// ask for anything else instead of handing back a key they cannot verify.
+	supported := false
+	for _, param := range pubKeyCredParams {
+		if param.Type == "public-key" && param.Algorithm == cose.COSE_ALGORITHM_ID_ES256 {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		return nil
+	}
 	id := client.vault.NewIdentity(relyingParty, user)
 	client.delegate.FIDOUpdated()
 	return id
@@ -136,7 +161,7 @@ func (client *FIDOClient) NewAuthenticationCounterId() uint32 {
 	return num
 }
 
-func (client *FIDOClient) CreateAttestationCertificiate(privateKey *ecdsa.PrivateKey) []byte {
+func (client *FIDOClient) CreateAttestationCertificiate(privateKey *cose.SupportedCOSEPrivateKey) []byte {
 	// TODO: Fill in fields like SerialNumber and SubjectKeyIdentifier
 	templateCert := &x509.Certificate{
 		SerialNumber: big.NewInt(0),
@@ -153,9 +178,26 @@ func (client *FIDOClient) CreateAttestationCertificiate(privateKey *ecdsa.Privat
 		IsCA:                  false,
 		BasicConstraintsValid: true,
 	}
-	certBytes, err := x509.CreateCertificate(rand.Reader, templateCert, client.certificateAuthority, &privateKey.PublicKey, client.certPrivateKey)
+	certBytes, err := x509.CreateCertificate(rand.Reader, templateCert, client.certificateAuthority, cosePublicKey(privateKey), client.certPrivateKey)
 	checkErr(err, "Could not generate attestation certificate")
 	return certBytes
+}
+
+// cosePublicKey unwraps the COSE key container virtual-fido now passes around
+// into the concrete public key type crypto/x509 expects.
+func cosePublicKey(privateKey *cose.SupportedCOSEPrivateKey) crypto.PublicKey {
+	publicKey := privateKey.Public()
+	switch {
+	case publicKey.ECDSA != nil:
+		return publicKey.ECDSA
+	case publicKey.Ed25519 != nil:
+		return *publicKey.Ed25519
+	case publicKey.RSA != nil:
+		return publicKey.RSA
+	default:
+		fatalf("Unsupported COSE key type for attestation certificate")
+		return nil
+	}
 }
 
 func (client *FIDOClient) getApproval(action, relyingParty, userName string) bool {
@@ -170,7 +212,7 @@ func (client *FIDOClient) ApproveAccountCreation(relyingParty string) bool {
 }
 
 func (client *FIDOClient) ApproveAccountLogin(credentialSource *identities.CredentialSource) bool {
-	relyingParty := firstNonEmpty(credentialSource.RelyingParty.Name, credentialSource.RelyingParty.Id)
+	relyingParty := firstNonEmpty(credentialSource.RelyingParty.Name, credentialSource.RelyingParty.ID)
 	userName := firstNonEmpty(credentialSource.User.DisplayName, credentialSource.User.Name)
 	return client.getApproval("fido_get_assertion", relyingParty, userName)
 }

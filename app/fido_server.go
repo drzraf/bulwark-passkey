@@ -19,7 +19,7 @@ func startFIDOServer(client *FIDOClient) {
 
 	installVirtualUSBDriverIfNecessary()
 	go attachUSBIPServer()
-	virtual_fido.Start(client)
+	startFIDODevice(client)
 }
 
 func installVirtualUSBDriverIfNecessary() {

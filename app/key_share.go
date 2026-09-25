@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bulwarkid/virtual-fido/cose"
 	"github.com/bulwarkid/virtual-fido/identities"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -21,7 +22,11 @@ import (
 // channel; the UI warns about this before exporting.
 
 const sharedPasskeyFormat = "bulwark-passkey-share"
-const sharedPasskeyVersion = 1
+
+// Version 2 stores credential private keys in the COSE encoding that
+// virtual-fido writes; version 1 files used the raw EC encoding and are still
+// accepted on import.
+const sharedPasskeyVersion = 2
 const sharedPasskeyExtension = ".passkey"
 
 type SharedPasskeyFile struct {
@@ -124,7 +129,7 @@ func (client *Client) importIdentity() shareResult {
 	if len(passkey.ID) == 0 {
 		return shareFailure("This passkey file is missing a credential ID.")
 	}
-	if _, err := x509.ParseECPrivateKey(passkey.PrivateKey); err != nil {
+	if !validSharedPrivateKey(passkey.PrivateKey) {
 		return shareFailure("This passkey file has an invalid private key.")
 	}
 	if passkey.Type == "" {
@@ -135,7 +140,7 @@ func (client *Client) importIdentity() shareResult {
 			return shareFailure("This passkey is already in your vault.")
 		}
 	}
-	if err := client.fidoClient.vault.Import([]identities.SavedCredentialSource{passkey}); err != nil {
+	if err := importSharedPasskey(client, passkey); err != nil {
 		return shareFailure("Could not import the passkey: %v", err)
 	}
 	client.FIDOUpdated()
@@ -149,8 +154,43 @@ func sharedPasskeyFilters() []runtime.FileFilter {
 	}
 }
 
+// validSharedPrivateKey accepts both key encodings the vault has used: COSE,
+// written by current versions, and the older raw SEC1/x509 EC encoding.
+func validSharedPrivateKey(privateKey []byte) bool {
+	if parseCOSEPrivateKey(privateKey) == nil {
+		return true
+	}
+	_, err := x509.ParseECPrivateKey(privateKey)
+	return err == nil
+}
+
+// parseCOSEPrivateKey reports whether the key decodes as COSE. virtual-fido
+// panics on partially valid COSE data instead of returning an error, and
+// passkey files come from outside the app, so the panic is turned back into
+// one.
+func parseCOSEPrivateKey(privateKey []byte) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("invalid COSE private key: %v", recovered)
+		}
+	}()
+	_, err = cose.UnmarshalCOSEPrivateKey(privateKey)
+	return err
+}
+
+// importSharedPasskey adds a passkey from a file to the vault, turning the
+// panics virtual-fido raises on malformed key data into a reported failure.
+func importSharedPasskey(client *Client, passkey identities.SavedCredentialSource) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("invalid passkey data: %v", recovered)
+		}
+	}()
+	return client.fidoClient.vault.Import([]identities.SavedCredentialSource{passkey})
+}
+
 func sharedPasskeyDescription(passkey *identities.SavedCredentialSource) string {
-	website := firstNonEmpty(passkey.RelyingParty.Name, passkey.RelyingParty.Id)
+	website := firstNonEmpty(passkey.RelyingParty.Name, passkey.RelyingParty.ID)
 	user := firstNonEmpty(passkey.User.DisplayName, passkey.User.Name)
 	if website == "" && user == "" {
 		return "an unnamed account"
@@ -166,7 +206,7 @@ func sharedPasskeyDescription(passkey *identities.SavedCredentialSource) string 
 
 func sharedPasskeyFilename(passkey *identities.SavedCredentialSource) string {
 	parts := make([]string, 0, 2)
-	for _, part := range []string{passkey.RelyingParty.Id, passkey.User.Name} {
+	for _, part := range []string{passkey.RelyingParty.ID, passkey.User.Name} {
 		if cleaned := sanitizeFilenamePart(part); cleaned != "" {
 			parts = append(parts, cleaned)
 		}

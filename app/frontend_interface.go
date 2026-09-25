@@ -82,17 +82,21 @@ func demoIdentities() [][]byte {
 }
 
 func credentialSourceToIdentity(source *identities.CredentialSource) *pb.Identity {
-	publicKeyBytes := elliptic.Marshal(elliptic.P256(), source.PrivateKey.PublicKey.X, source.PrivateKey.PublicKey.Y)
-	privateKeyBytes, err := x509.MarshalECPrivateKey(source.PrivateKey)
+	// The vault only ever creates ES256 credentials, but virtual-fido can now
+	// hold other key types, which have no ECDSA encoding to hand the frontend.
+	ecdsaKey := source.PrivateKey.ECDSA
+	assert(ecdsaKey != nil, "Credential source does not use an ECDSA key")
+	publicKeyBytes := elliptic.Marshal(elliptic.P256(), ecdsaKey.PublicKey.X, ecdsaKey.PublicKey.Y)
+	privateKeyBytes, err := x509.MarshalECPrivateKey(ecdsaKey)
 	checkErr(err, "Could not marshal private key")
 	return &pb.Identity{
 		Id: source.ID,
 		Website: &pb.RelyingParty{
-			Id:   &source.RelyingParty.Id,
+			Id:   &source.RelyingParty.ID,
 			Name: &source.RelyingParty.Name,
 		},
 		User: &pb.User{
-			Id:          source.User.Id,
+			Id:          source.User.ID,
 			Name:        &source.User.Name,
 			DisplayName: &source.User.DisplayName,
 		},
