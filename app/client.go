@@ -87,18 +87,18 @@ func (client *Client) updateData(data []byte, lastUpdated string) {
 	}
 	savedStateBytes, err := identities.DecryptWithPassphrase(client.passphrase(), data)
 	if err != nil {
-		errorf("Invalid state data provided: %w", err)
+		errorf("Invalid state data provided: %v", err)
 		return
 	}
 	savedState := ClientSavedState{}
 	err = json.Unmarshal(savedStateBytes, &savedState)
 	if err != nil {
-		errorf("Invalid state json data provided: %w", err)
+		errorf("Invalid state json data provided: %v", err)
 		return
 	}
 	config, err := identities.DecryptFIDOState(savedState.VirtualFIDOConfig, client.passphrase())
 	if err != nil {
-		errorf("Invalid FIDO state in data: %w", err)
+		errorf("Invalid FIDO state in data: %v", err)
 		return
 	}
 	lastUpdatedTime := now()

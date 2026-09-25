@@ -25,7 +25,7 @@ func checkErr(err error, msg string) {
 	if err != nil {
 		errorMsg := fmt.Sprintf("Error - %v - %s", err, msg)
 		debug.PrintStack()
-		fatalf(errorMsg)
+		fatalf("%s", errorMsg)
 	}
 }
 

@@ -32,7 +32,7 @@ type Logger struct {
 }
 
 func (logger *Logger) printInternal(format string, args ...interface{}) {
-	fmt.Printf(fmt.Sprintf(format, args...))
+	fmt.Print(fmt.Sprintf(format, args...))
 	logger.log.Printf(format, args...)
 }
 
@@ -56,6 +56,6 @@ func (logger *Logger) Error(message string) {
 }
 func (logger *Logger) Fatal(message string) {
 	errorMsg := fmt.Sprintf("[FATAL] %s\n", message)
-	fmt.Printf(errorMsg)
-	logger.log.Fatalf(errorMsg)
+	fmt.Print(errorMsg)
+	logger.log.Fatal(errorMsg)
 }

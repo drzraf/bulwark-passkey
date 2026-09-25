@@ -61,6 +61,73 @@ build against it with:
 WAILS_TAGS= make build
 ```
 
+## Attaching the authenticator on Linux
+
+The app serves the virtual key over USB/IP on `127.0.0.1:3240` and asks the
+kernel to plug it in, at startup and again whenever the host detaches it. Two
+privileged commands are involved, each executed directly, never through a
+shell, so that sudoers, polkit and AppArmor rules can match the exact program
+and arguments:
+
+```
+modprobe vhci-hcd                          # only when the driver is missing
+usbip attach -r 127.0.0.1 -b 2-2
+```
+
+Each command is tried in the order that disturbs the user least: run directly
+when the app already runs as root, then `sudo -n`, which stays silent unless a
+`NOPASSWD` rule covers it, and finally `pkexec`, which asks through the
+desktop's polkit agent.
+
+`modprobe` is skipped when `/sys/devices/platform/vhci_hcd.0` exists or
+`/proc/modules` lists `vhci_hcd`, so a built-in driver, one loaded by udev, or
+one already loaded by a previous attach costs nothing. Loading it once per boot
+avoids the question entirely:
+
+```
+echo vhci-hcd | sudo tee /etc/modules-load.d/vhci-hcd.conf
+```
+
+### Attaching without a password prompt
+
+Either mechanism works; pick the one your system already uses. Check the paths
+first, since `usbip` lives in `/usr/bin`, `/usr/sbin` or `/usr/local/bin`
+depending on the distribution:
+
+```
+command -v usbip modprobe
+```
+
+A sudoers drop-in, edited with `sudo visudo -f /etc/sudoers.d/bulwark-passkey`,
+covers the `sudo -n` step:
+
+```
+yug ALL=(root) NOPASSWD: /usr/local/bin/usbip attach -r 127.0.0.1 -b 2-2
+yug ALL=(root) NOPASSWD: /usr/sbin/modprobe vhci-hcd
+```
+
+A polkit rule in `/etc/polkit-1/rules.d/49-bulwark-passkey.rules` covers the
+`pkexec` step instead, and can match the whole command line:
+
+```javascript
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.policykit.exec") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var command = action.lookup("command_line");
+    if (subject.isInGroup("users") &&
+        (command === "/usr/local/bin/usbip attach -r 127.0.0.1 -b 2-2" ||
+         command === "/usr/sbin/modprobe vhci-hcd")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});
+```
+
+Both grant root for those two exact commands only, which is why the app never
+runs `pkexec bash -c ...`: allowing a shell to run as root would grant far more
+than attaching a USB device.
+
 ## Build macOS
 
 ```
