@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bulwarkid/bulwark-passkey/app/mac"
@@ -28,8 +29,24 @@ func installVirtualUSBDriverIfNecessary() {
 	}
 }
 
+// usbipAttaching keeps overlapping attach attempts, and the authorization
+// prompts that come with them, from stacking up.
+var usbipAttaching atomic.Bool
+
 func attachUSBIPServer() {
-	time.Sleep(250 * time.Millisecond)
+	attachUSBIPDevice(250 * time.Millisecond)
+}
+
+// attachUSBIPDevice plugs the virtual authenticator into the host after the
+// given delay. It is called at startup and again whenever the host detaches
+// the device, so that a detach does not require restarting the app.
+func attachUSBIPDevice(delay time.Duration) {
+	if !usbipAttaching.CompareAndSwap(false, true) {
+		debugf("Skipping USB/IP attach, one is already pending")
+		return
+	}
+	defer usbipAttaching.Store(false)
+	time.Sleep(delay)
 	if runtime.GOOS == "windows" {
 		attachUSBIPWindows()
 	} else if runtime.GOOS == "linux" {

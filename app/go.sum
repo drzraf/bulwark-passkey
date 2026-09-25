@@ -2,8 +2,6 @@ git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
 github.com/bep/debounce v1.2.1 h1:v67fRdBA9UQu2NhLFXrSg0Brw7CexQekrBwDMM8bzeY=
 github.com/bep/debounce v1.2.1/go.mod h1:H8yggRPQKLUhUoqrJC1bO2xNya7vanpDl7xR3ISbCJ0=
-github.com/bulwarkid/virtual-fido v0.2.1-beta.2.0.20230228002418-2ebf6ee06143 h1:V7MXtOHuPvUTIaAnPBS6Bue003rlY00/3Yw2fwma4So=
-github.com/bulwarkid/virtual-fido v0.2.1-beta.2.0.20230228002418-2ebf6ee06143/go.mod h1:pNHOgvE3SmxJXBWOj13uKDDhSSfQAm/YavqWyxB1YJ4=
 github.com/bulwarkid/virtual-fido v0.2.1-beta.2.0.20240623215839-512d8a3fef0e h1:CmD/mKgDtmDHt8ciPtu17vwBDUyrbHcUsT61HIfUE2o=
 github.com/bulwarkid/virtual-fido v0.2.1-beta.2.0.20240623215839-512d8a3fef0e/go.mod h1:U+XNrKw3lrq8GrOHPSQBsf3jUPV89nAJrdCzsiUY7hw=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

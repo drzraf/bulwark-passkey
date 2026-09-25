@@ -60,6 +60,16 @@ const (
 
 const usbipBusIDLength = 32
 
+const (
+	// How long to wait before putting the authenticator back after the host
+	// detached it. Re-attaching needs authorization, so it is never immediate.
+	usbipReattachDelay = 5 * time.Second
+	// Upper bound for the delay when attaching keeps failing.
+	usbipMaxReattachDelay = 60 * time.Second
+	// A session shorter than this means the host dropped us right away.
+	usbipShortSession = 2 * time.Second
+)
+
 type usbipControlHeader struct {
 	Version uint16
 	Command uint16
@@ -113,6 +123,7 @@ func startFIDODevice(client *FIDOClient) {
 		return
 	}
 	defer listener.Close()
+	reattachDelay := usbipReattachDelay
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -132,7 +143,28 @@ func startFIDODevice(client *FIDOClient) {
 		// Each attach gets a fresh device, the same way re-plugging a physical
 		// key resets it. It also keeps a dropped session's late responses from
 		// leaking into the next one.
-		serveUSBIPConnection(newFIDODevice(client), conn)
+		startedAt := time.Now()
+		imported := serveUSBIPConnection(newFIDODevice(client), conn)
+		if !imported {
+			// The host only asked what devices are on offer.
+			continue
+		}
+		// The host detached, which is what a port reset after a retried
+		// authentication request looks like, so plug the authenticator back
+		// in.
+		delay := reattachDelay
+		if time.Since(startedAt) < usbipShortSession {
+			// The host dropped us right away, so slow the next attempt down:
+			// an attach that keeps failing must not turn into a stream of
+			// authorization prompts.
+			reattachDelay = min(reattachDelay*2, usbipMaxReattachDelay)
+		} else {
+			reattachDelay = usbipReattachDelay
+		}
+		// Logged above debug level: in a production build this is the only
+		// record of why the authenticator disappeared.
+		warnf("USB/IP: device detached, re-attaching in %v", delay)
+		go attachUSBIPDevice(delay)
 	}
 }
 
@@ -217,14 +249,17 @@ func (conn *usbipConnection) readBytes(length int) ([]byte, error) {
 	return data, nil
 }
 
-func serveUSBIPConnection(device usbip.USBIPDevice, netConn net.Conn) {
+// serveUSBIPConnection handles one host connection and reports whether that
+// host had the device attached, which tells the caller whether the
+// authenticator now needs to be plugged back in.
+func serveUSBIPConnection(device usbip.USBIPDevice, netConn net.Conn) bool {
 	conn := &usbipConnection{conn: netConn}
 	defer conn.close()
 	for {
 		var header usbipControlHeader
 		if err := conn.read(&header); err != nil {
 			logUSBIPDisconnect("Control connection ended", err)
-			return
+			return false
 		}
 		switch header.Command {
 		case usbipOpReqDevlist:
@@ -233,7 +268,7 @@ func serveUSBIPConnection(device usbip.USBIPDevice, netConn net.Conn) {
 			busID, err := conn.readBytes(usbipBusIDLength)
 			if err != nil {
 				logUSBIPDisconnect("Could not read bus ID", err)
-				return
+				return false
 			}
 			if usbipString(busID) != device.BusID() {
 				errorf("Host asked for unknown USB/IP device %q", usbipString(busID))
@@ -246,10 +281,10 @@ func serveUSBIPConnection(device usbip.USBIPDevice, netConn net.Conn) {
 			}
 			conn.write(usbipImportReply(device))
 			handleUSBIPCommands(device, conn)
-			return
+			return true
 		default:
 			errorf("Unknown USB/IP control command 0x%x", header.Command)
-			return
+			return false
 		}
 	}
 }

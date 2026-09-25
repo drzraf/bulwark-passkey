@@ -15,6 +15,10 @@ func debugf(format string, args ...interface{}) {
 	runtime.LogDebugf(app.ctx, format, args...)
 }
 
+func warnf(format string, args ...interface{}) {
+	runtime.LogWarningf(app.ctx, format, args...)
+}
+
 func errorf(format string, args ...interface{}) {
 	runtime.LogErrorf(app.ctx, format, args...)
 }
