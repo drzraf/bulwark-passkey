@@ -85,7 +85,25 @@ func (client *FIDOClient) loadConfig(config *identities.FIDODeviceConfig) {
 	client.encryptionKey = config.EncryptionKey
 	client.pinHash = config.PINHash
 	client.vault = identities.NewIdentityVault()
-	client.vault.Import(config.Sources)
+	importSources(client.vault, config.Sources)
+}
+
+// importSources loads saved credentials into the vault one at a time.
+//
+// IdentityVault.Import() stores &source.RelyingParty and &source.User, which
+// point into its range variable. virtual-fido declares "go 1.19", so that
+// variable is shared by every iteration (per-iteration loop variables only
+// apply from go 1.22), and importing a slice therefore leaves every credential
+// in the vault pointing at the last entry's relying party and user. The next
+// save writes those aliased values back through Export(), so the vault ends up
+// holding N copies of the last website/account and logins for every other site
+// stop matching. Importing single-element slices gives each credential its own
+// backing struct.
+func importSources(vault *identities.IdentityVault, sources []identities.SavedCredentialSource) {
+	for i := range sources {
+		err := vault.Import(sources[i : i+1])
+		checkErr(err, "Could not import saved credential")
+	}
 }
 
 func (client *FIDOClient) exportConfig() *identities.FIDODeviceConfig {
